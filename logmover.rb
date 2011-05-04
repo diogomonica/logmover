@@ -3,99 +3,93 @@
 require 'fileutils'
 require 'digest/md5'
 
-@log_dir = '/tmp/logs/'
-@log_old_dir = '/tmp/oldlogs/'
+LOG_DIR = './test/logs/'
+LOG_OLD_DIR = './test/oldlogs/'
 
 # Set to 7 days. Reduce for testing
-@maximum_age_in_seconds = 7*24*60*60
+MAXIMUM_AGE_IN_SECONDS = 7*24*60*60
 
-# Returns all the directories below @log_dir
-def get_all_directories
-  Dir["#{@log_dir}**/"]
+# Returns all the directories below LOG_DIR
+def all_directories dir
+  Dir["#{dir}**/"]
 end
 
 # Uses an exec to call tar, compressing the folder given as the argument
-def compress_directory (dir)
+def compress_directory dir
   if File.directory? dir
     puts "# - Compressing directory: #{dir}"
-    dir_compressed_name = dir.sub("/",'').gsub("/", '_')[0..-2]
-    system("tar -pczf #{dir_compressed_name}.tar.gz #{dir} >> /dev/null") if File.exist? dir
+    dir_compressed_name = dir.sub(".",'').sub("/",'').gsub("/", '_')[0..-2]
+    system("tar","-pczf","#{dir_compressed_name}.tar.gz", "#{dir}") if File.exist? dir
     "#{dir_compressed_name}.tar.gz"
   else
     raise "Could not compress the following directory: #{dir}"
   end
 end
 
-# There is no way of getting the age of a directory in Linux. 
-# This method returns the age of the most recent file in the directory
-def get_directory_age (path)
-  if File.directory? path
-    newest_timestamp = Time.at(0)
-    Dir["#{path}*"].each { |file| newest_timestamp = File.stat(file).atime if File.stat(file).atime > newest_timestamp }
-
-    # If the timestamp is unchanged, the directory is empty.
-    # Return Time.now so it will pass the ignore logic
-    if newest_timestamp == Time.at(0)
-      Time.now
-    else
-      newest_timestamp
-    end
-  end
+def directory_age path
+  File.stat(path).mtime if File.exist? path
 end
 
-# Checks if a directory is older than 7 days, using get_directory_age
-def old_dir? (path)
+# Checks if a directory is older than 7 days, using directory_age
+def old_dir? path
   if File.directory? path
-    (Time.new - get_directory_age(path)) >  @maximum_age_in_seconds# the difference returns in seconds
+    (Time.new - directory_age(path)) >  MAXIMUM_AGE_IN_SECONDS # the difference returns in seconds
   else
-    raise "Error while getting the directory's age: #{path}"
+    raise "Error while retrieving the directory's age: #{path}"
   end
 end
 
-# Creates the new directory structure under @log_old_dir in case it doesnt exist.
-# Moves a file to the @old_log_dir directory. 
-def move_file_to_old_log_dir (file,dir)
-  new_directory_path = @log_old_dir + dir[@log_dir.length..-1]
-  FileUtils.mkdir_p(new_directory_path) if not File.exist? new_directory_path
+# Attests if the current directory actually contains files, or not.
+def contains_files? dir
+  contains_files = false
+  Dir.entries(dir).each { |entry| contains_files = true if File.file? dir+entry}
+  contains_files
+end
+
+# Creates the new directory structure under LOG_OLD_DIR in case it doesnt exist.
+def move_file (new_directory_path,file)
+  FileUtils.mkdir_p new_directory_path  if not File.exist? new_directory_path
   if File.exist? file and File.file? file
     if File.exist? new_directory_path + file
       puts "# - File #{file} already exists. Skipping..."
+      FileUtils.rm file
     else
-      puts "# - Moving the file: #{file} to #{@log_old_dir}..."      
-      FileUtils.mv(file, new_directory_path)
+      puts "# - Moving the file: #{file} to #{new_directory_path}..."      
+      FileUtils.mv file, new_directory_path
     end
   else
-    raise "Error while moving file to #{@log_old_dir}"
+    raise "Error while moving file to #{LOG_OLD_DIR}"
   end
 end
 
-def calculate_md5_sum (file)
+def calculate_md5_sum file
   puts "# - Calculating the MD5 sum..."      
   incr_digest = Digest::MD5.new()
-  file = File.open(file, 'r')
+  file = File.open file, 'r'
   file.each_line do |line|
     incr_digest << line
   end
   incr_digest
 end
 
-puts "# Starting logmover..."
-directories = get_all_directories
-puts "# Found #{directories.count} directories in #{@log_dir}\n"
-directories.each do |dir| 
-  if old_dir? dir
-    puts "# Parsing directory: #{dir}"
-    f = File.open('directory_import.log','a')
-    begin
-      out_file_name = compress_directory(dir)
-      file_md5_sum = calculate_md5_sum(out_file_name)
-      move_file_to_old_log_dir(out_file_name, dir)
-      f.puts "#{out_file_name};#{file_md5_sum}"
-    rescue RuntimeError => error
-      puts "Got the following error: #{error}" 
-      f.puts "Got the following error: #{error}" 
-    ensure
-      f.close unless f.nil?        
+if __FILE__ == $0
+  puts "# Starting logmover..."
+  directories = all_directories LOG_DIR
+  puts "# Found #{directories.count} directories in #{LOG_DIR}\n"
+  directories.each do |dir| 
+    if old_dir? dir  and contains_files? dir
+      puts "# Parsing directory: #{dir}"
+      f = File.open 'directory_import.log','a'
+      begin
+        out_file_name = compress_directory dir
+        file_md5_sum = calculate_md5_sum out_file_name
+        move_file LOG_OLD_DIR + dir[LOG_DIR.length..-1], out_file_name
+        f.puts "#{dir};#{out_file_name};#{file_md5_sum};#{Time.new}"
+      rescue RuntimeError => error
+        puts "Got the following error: #{error}"       
+      ensure
+        f.close unless f.nil?        
+      end
     end
   end
 end

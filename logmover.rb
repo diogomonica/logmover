@@ -79,7 +79,8 @@ if __FILE__ == $0
   directories.each do |dir| 
     if old_dir? dir  and contains_files? dir
       puts "# Parsing directory: #{dir}"
-      f = File.open 'directory_import.log','a'
+      time = Time.new
+      f = File.open "logmover_directories_imported_#{time.month}_#{time.day}_#{time.year}.log",'a'
       begin
         out_file_name = compress_directory dir
         file_md5_sum = calculate_md5_sum out_file_name

@@ -21,6 +21,15 @@ class LogMoverTests < Test::Unit::TestCase
                        "./test/logs/2010/02/04/",
                        "./test/logs/2011/01/02/",
                        "./test/logs/2011/03/01/",]
+                       
+  def setup 
+    create_test_env
+  end
+
+  def teardown 
+    remove_test_env
+  end
+   
   def create_test_env
       DIRECTORIES_WITH_LOGS.each do |dir|
         FileUtils.mkdir_p dir if not File.exist? dir
@@ -43,14 +52,11 @@ class LogMoverTests < Test::Unit::TestCase
   end
   
   def test_calculate_md5_sum
-        create_test_env
         md5 = calculate_md5_sum DIRECTORIES_WITH_LOGS[rand(DIRECTORIES_WITH_LOGS.length)]+"log.log"
         assert md5 == "82775acf9c2a6b8302649e0f5941c417"
-        remove_test_env
     end
     
     def test_compress_directory
-      create_test_env
       dir = DIRECTORIES_WITH_LOGS[rand(DIRECTORIES_WITH_LOGS.length)]
       output_file_name = compress_directory dir
       
@@ -63,20 +69,16 @@ class LogMoverTests < Test::Unit::TestCase
       assert_raises RuntimeError do 
         compress_directory "NONEXISTINGDIR"
       end    
-      remove_test_env
     end
     
     def test_directory_age
-           create_test_env
            directory_age = directory_age DIRECTORIES_WITH_LOGS[rand(DIRECTORIES_WITH_LOGS.length)]
            assert (Time.new - directory_age) < 5
            directory_age = directory_age EMPTY_DIRECTORIES[rand(EMPTY_DIRECTORIES.length)]
            assert (Time.new - directory_age) < 5
-           remove_test_env
          end
          
        def test_all_directories
-         create_test_env
          found_directories = all_directories "./test/"
          contains_all = true
          DIRECTORIES_WITH_LOGS.each do |dir|
@@ -86,17 +88,13 @@ class LogMoverTests < Test::Unit::TestCase
            contains_all = false if not found_directories.include? dir
          end
          assert contains_all
-         remove_test_env    
        end
        
-       def test_move_file
-         create_test_env
-         
+       def test_move_file         
          move_file "./test/", DIRECTORIES_WITH_LOGS[0]+"log.log"
          assert File.exist? "./test/log.log" and not File.exist? DIRECTORIES_WITH_LOGS[0]+"log.log"
          assert_raises RuntimeError do 
            move_file "./test/", "NONEXISTENTFILE"
          end    
-         remove_test_env   
        end
 end
